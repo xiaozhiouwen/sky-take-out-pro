@@ -20,4 +20,23 @@
         </where>
     </select>
 
+    <update id="update">
+        update user
+        <set>
+            <if test="name != null">
+                name = #{name},
+            </if>
+            <if test="avatar != null">
+                avatar = #{avatar},
+            </if>
+            <if test="sex != null">
+                sex = #{sex},
+            </if>
+            <if test="openid != null">
+                openid = #{openid},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
 </mapper>

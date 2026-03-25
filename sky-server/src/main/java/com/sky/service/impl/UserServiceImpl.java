@@ -37,15 +37,15 @@ public class UserServiceImpl implements UserService {
      */
     public User wxLogin(UserLoginDTO userLoginDTO) {
         String openid = getOpenid(userLoginDTO.getCode());
-
-        //判断openid是否为空，如果为空表示登录失败，抛出业务异常
+    
+        //判断 openid 是否为空，如果为空表示登录失败，抛出业务异常
         if(openid == null){
             throw new LoginFailedException(MessageConstant.LOGIN_FAILED);
         }
-
+    
         //判断当前用户是否为新用户
         User user = userMapper.getByOpenid(openid);
-
+    
         //如果是新用户，自动完成注册
         if(user == null){
             user = User.builder()
@@ -54,7 +54,20 @@ public class UserServiceImpl implements UserService {
                     .build();
             userMapper.insert(user);
         }
-
+    
+        //更新用户信息 (头像、昵称等)
+        user = User.builder()
+                .id(user.getId())
+                .openid(user.getOpenid())
+                .name(userLoginDTO.getName())
+                .avatar(userLoginDTO.getAvatar())
+                .sex(userLoginDTO.getSex())
+                .phone(user.getPhone())
+                .idNumber(user.getIdNumber())
+                .createTime(user.getCreateTime())
+                .build();
+        userMapper.update(user);
+    
         //返回这个用户对象
         return user;
     }

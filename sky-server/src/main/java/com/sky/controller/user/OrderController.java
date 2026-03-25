@@ -93,6 +93,19 @@ public class OrderController {
     }
 
     /**
+     * 删除已取消的订单
+     *
+     * @param id
+     * @return
+     */
+    @DeleteMapping("/{id}")
+    @ApiOperation("删除订单")
+    public Result delete(@PathVariable("id") Long id) throws Exception {
+        orderService.deleteById(id);
+        return Result.success();
+    }
+
+    /**
      * 再来一单
      *
      * @param id

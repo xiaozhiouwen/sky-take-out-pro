@@ -32,4 +32,10 @@ public interface UserMapper {
      * @return
      */
     Integer countByMap(Map map);
+
+    /**
+     * 更新用户信息
+     * @param user
+     */
+    void update(User user);
 }

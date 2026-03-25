@@ -348,22 +348,22 @@ public class OrderServiceImpl implements OrderService {
      * @param id
      */
     public void userCancelById(Long id) throws Exception {
-        // 根据id查询订单
+        // 根据 id 查询订单
         Orders ordersDB = orderMapper.getById(id);
-
+    
         // 校验订单是否存在
         if (ordersDB == null) {
             throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
         }
-
-        //订单状态 1待付款 2待接单 3已接单 4派送中 5已完成 6已取消
+    
+        //订单状态 1 待付款 2 待接单 3 已接单 4 派送中 5 已完成 6 已取消
         if (ordersDB.getStatus() > 2) {
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
-
+    
         Orders orders = new Orders();
         orders.setId(ordersDB.getId());
-
+    
         // 订单处于待接单状态下取消，需要进行退款
         if (ordersDB.getStatus().equals(Orders.TO_BE_CONFIRMED)) {
             //调用微信支付退款接口
@@ -372,16 +372,49 @@ public class OrderServiceImpl implements OrderService {
                     ordersDB.getNumber(), //商户退款单号
                     new BigDecimal(0.01),//退款金额，单位 元
                     new BigDecimal(0.01));//原订单金额
-
+    
             //支付状态修改为 退款
             orders.setPayStatus(Orders.REFUND);
         }
-
+    
         // 更新订单状态、取消原因、取消时间
         orders.setStatus(Orders.CANCELLED);
         orders.setCancelReason("用户取消");
         orders.setCancelTime(LocalDateTime.now());
         orderMapper.update(orders);
+    }
+    
+    /**
+     * 删除已取消的订单
+     *
+     * @param id
+     */
+    @Transactional
+    public void deleteById(Long id) throws Exception {
+        // 根据 id 查询订单
+        Orders ordersDB = orderMapper.getById(id);
+    
+        // 校验订单是否存在
+        if (ordersDB == null) {
+            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
+    
+        // 校验订单是否属于当前用户
+        Long userId = BaseContext.getCurrentId();
+        if (!ordersDB.getUserId().equals(userId)) {
+            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
+    
+        // 校验订单状态，只能删除已取消的订单
+        if (!ordersDB.getStatus().equals(Orders.CANCELLED)) {
+            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+        }
+    
+        // 删除订单明细
+        orderDetailMapper.deleteByOrderId(id);
+    
+        // 删除订单
+        orderMapper.deleteById(id);
     }
 
     /**

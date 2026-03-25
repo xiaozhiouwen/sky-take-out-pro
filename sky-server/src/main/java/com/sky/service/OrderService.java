@@ -51,6 +51,12 @@ public interface OrderService {
     void userCancelById(Long id) throws Exception;
 
     /**
+     * 删除已取消的订单
+     * @param id
+     */
+    void deleteById(Long id) throws Exception;
+
+    /**
      * 再来一单
      * @param id
      */

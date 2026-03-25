@@ -2,3 +2,6 @@
 /sky-common/target/
 /sky-pojo/target/
 /sky-server/target/
+
+# Sensitive configuration files
+/sky-server/src/main/resources/application-dev.yml
