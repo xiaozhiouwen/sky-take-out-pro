@@ -239,13 +239,15 @@ public class OrderServiceImpl implements OrderService {
      * @return
      */
     private OrderPaymentVO mockPayment() {
-        log.info("========== 测试模式：模拟支付成功 ==========");
+        log.info("========== 测试模式：生成模拟支付二维码 ==========");
         OrderPaymentVO vo = new OrderPaymentVO();
         vo.setNonceStr("test_nonce_" + System.currentTimeMillis());
         vo.setPackageStr("prepay_id=test_prepay_id_" + System.currentTimeMillis());
         vo.setSignType("RSA");
         vo.setTimeStamp(String.valueOf(System.currentTimeMillis() / 1000));
         vo.setPaySign("test_pay_sign");
+        // 添加一个模拟的二维码数据（实际项目中应该用微信支付的 code_url）
+        vo.setCodeUrl("https://wechat.com/pay?test=true&orderId=" + System.currentTimeMillis());
         log.info("测试模式支付参数：{}", vo);
         return vo;
     }
@@ -256,28 +258,40 @@ public class OrderServiceImpl implements OrderService {
      * @param outTradeNo
      */
     public void paySuccess(String outTradeNo) {
-        // 当前登录用户id
+        // 当前登录用户 id
         Long userId = BaseContext.getCurrentId();
-
+    
         // 根据订单号查询当前用户的订单
         Orders ordersDB = orderMapper.getByNumberAndUserId(outTradeNo, userId);
-
-        // 根据订单id更新订单的状态、支付方式、支付状态、结账时间
+            
+        // 校验订单是否存在
+        if (ordersDB == null) {
+            log.error("订单不存在，orderNumber: {}, userId: {}", outTradeNo, userId);
+            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
+            
+        // 检查订单是否已支付
+        if (ordersDB.getStatus() >= Orders.TO_BE_CONFIRMED) {
+            log.warn("订单已支付，无需重复操作，orderNumber: {}, status: {}", outTradeNo, ordersDB.getStatus());
+            return; // 直接返回，不抛异常
+        }
+    
+        // 根据订单 id 更新订单的状态、支付方式、支付状态、结账时间
         Orders orders = Orders.builder()
                 .id(ordersDB.getId())
                 .status(Orders.TO_BE_CONFIRMED)
                 .payStatus(Orders.PAID)
                 .checkoutTime(LocalDateTime.now())
                 .build();
-
+    
         orderMapper.update(orders);
-
-        //通过websocket向客户端浏览器推送消息 type orderId content
+    
+        //通过 websocket 向客户端浏览器推送消息 type orderId content
         Map map = new HashMap();
-        map.put("type",1); // 1表示来单提醒 2表示客户催单
+        map.put("type",1); // 1 表示来单提醒 2 表示客户催单
         map.put("orderId",ordersDB.getId());
         map.put("content","订单号：" + outTradeNo);
-
+    
         String json = JSON.toJSONString(map);
         webSocketServer.sendToAllClient(json);
     }
@@ -385,7 +399,7 @@ public class OrderServiceImpl implements OrderService {
     }
     
     /**
-     * 删除已取消的订单
+     * 删除已取消或已完成的订单（用户端）
      *
      * @param id
      */
@@ -405,8 +419,38 @@ public class OrderServiceImpl implements OrderService {
             throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
         }
     
-        // 校验订单状态，只能删除已取消的订单
-        if (!ordersDB.getStatus().equals(Orders.CANCELLED)) {
+        // 校验订单状态，只能删除已完成或已取消的订单
+        if (!ordersDB.getStatus().equals(Orders.COMPLETED) && !ordersDB.getStatus().equals(Orders.CANCELLED)) {
+            log.error("用户删除订单失败，orderId: {}, status: {}", ordersDB.getId(), ordersDB.getStatus());
+            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+        }
+    
+        // 删除订单明细
+        orderDetailMapper.deleteByOrderId(id);
+    
+        // 删除订单
+        orderMapper.deleteById(id);
+    }
+
+    /**
+     * 商家删除已取消的订单
+     *
+     * @param id
+     */
+    @Transactional
+    public void adminDeleteById(Long id) throws Exception {
+        // 根据 id 查询订单
+        Orders ordersDB = orderMapper.getById(id);
+    
+        // 校验订单是否存在
+        if (ordersDB == null) {
+            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
+    
+        // 校验订单状态，只能删除已完成或已取消的订单
+        Integer status = ordersDB.getStatus();
+        if (!status.equals(Orders.COMPLETED) && !status.equals(Orders.CANCELLED)) {
+            log.error("订单状态不允许删除，orderId: {}, status: {}", ordersDB.getId(), status);
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
     
@@ -651,7 +695,7 @@ public class OrderServiceImpl implements OrderService {
      * @param id
      */
     public void reminder(Long id) {
-        // 根据id查询订单
+        // 根据 id 查询订单
         Orders ordersDB = orderMapper.getById(id);
 
         // 校验订单是否存在
@@ -660,11 +704,37 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Map map = new HashMap();
-        map.put("type",2); //1表示来单提醒 2表示客户催单
+        map.put("type",2); //1 表示来单提醒 2 表示客户催单
         map.put("orderId",id);
         map.put("content","订单号：" + ordersDB.getNumber());
 
-        //通过websocket向客户端浏览器推送消息
+        //通过 websocket 向客户端浏览器推送消息
         webSocketServer.sendToAllClient(JSON.toJSONString(map));
+    }
+
+    /**
+     * 检查订单支付状态
+     * @param orderNumber
+     * @return true-已支付，false-未支付
+     */
+    public Boolean checkPaymentStatus(String orderNumber) {
+        Long userId = BaseContext.getCurrentId();
+        Orders ordersDB = orderMapper.getByNumberAndUserId(orderNumber, userId);
+        
+        if (ordersDB == null) {
+            return false;
+        }
+        
+        // 如果订单状态是待接单或更高，说明已支付
+        return ordersDB.getStatus() >= Orders.TO_BE_CONFIRMED;
+    }
+
+    /**
+     * 模拟用户扫码支付（测试用）
+     * @param orderNumber
+     */
+    public void mockScanPay(String orderNumber) {
+        log.info("========== 模拟用户扫码支付：{} ==========", orderNumber);
+        paySuccess(orderNumber);
     }
 }

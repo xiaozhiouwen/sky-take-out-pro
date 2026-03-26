@@ -124,4 +124,17 @@ public class OrderController {
         orderService.complete(id);
         return Result.success();
     }
+
+    /**
+     * 商家删除订单（已完成或已取消）
+     *
+     * @param id
+     * @return
+     */
+    @DeleteMapping("/{id}")
+    @ApiOperation("商家删除订单")
+    public Result delete(@PathVariable("id") Long id) throws Exception {
+        orderService.adminDeleteById(id);
+        return Result.success();
+    }
 }

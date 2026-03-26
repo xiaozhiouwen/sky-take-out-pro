@@ -51,10 +51,16 @@ public interface OrderService {
     void userCancelById(Long id) throws Exception;
 
     /**
-     * 删除已取消的订单
+     * 删除已取消的订单（用户端）
      * @param id
      */
     void deleteById(Long id) throws Exception;
+
+    /**
+     * 商家删除订单（已完成或已取消）
+     * @param id
+     */
+    void adminDeleteById(Long id) throws Exception;
 
     /**
      * 再来一单
@@ -115,4 +121,17 @@ public interface OrderService {
      * @param id
      */
     void reminder(Long id);
+
+    /**
+     * 检查订单支付状态
+     * @param orderNumber
+     * @return true-已支付，false-未支付
+     */
+    Boolean checkPaymentStatus(String orderNumber);
+
+    /**
+     * 模拟用户扫码支付（测试用）
+     * @param orderNumber
+     */
+    void mockScanPay(String orderNumber);
 }
